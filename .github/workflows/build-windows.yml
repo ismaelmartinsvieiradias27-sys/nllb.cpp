@@ -1,0 +1,55 @@
+name: Build nllb-cli for Windows x64
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/**"
+      - "include/**"
+      - "ggml"
+      - "patches/**"
+      - "**/CMakeLists.txt"
+      - "examples/cli/**"
+      - ".github/workflows/build-windows.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure CPU-only build
+        run: cmake -S . -B build -A x64 -DNLLB_BUILD_EXAMPLES=ON -DNLLB_BUILD_TESTS=OFF -DNLLB_BUILD_SERVER=OFF
+
+      - name: Compile nllb-cli
+        run: cmake --build build --config Release --parallel 2 --target nllb-cli
+
+      - name: Package and test executable
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path build -Filter nllb-cli.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "nllb-cli.exe was not produced." }
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          Copy-Item $exe.FullName package/
+          & (Join-Path (Get-Location) "package/nllb-cli.exe") --help
+          if ($LASTEXITCODE -ne 0) { throw "nllb-cli.exe smoke test failed." }
+          @"
+          nllb-cli.exe - Windows x64 CPU build
+          Built from ismaelmartinsvieiradias27-sys/nllb.cpp.
+          No CUDA required. Download a compatible NLLB GGUF model separately.
+          "@ | Set-Content package/LEIA-ME.txt
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: nllb-cli-windows-x64
+          path: package/*
+          if-no-files-found: error
+          retention-days: 14

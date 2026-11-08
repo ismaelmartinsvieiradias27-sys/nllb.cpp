@@ -38,15 +38,18 @@ jobs:
           if (-not $exe) { throw "nllb-cli.exe was not produced." }
           New-Item -ItemType Directory -Force -Path package | Out-Null
           Copy-Item $exe.FullName package/
-          & (Join-Path (Get-Location) "package/nllb-cli.exe") --help
-          if ($LASTEXITCODE -ne 0) { throw "nllb-cli.exe smoke test failed." }
+          Get-ChildItem -Path $exe.DirectoryName -Filter "*.dll" | Copy-Item -Destination package/
+          & (Join-Path (Get-Location) "package/nllb-cli.exe") --list-backends
+          if ($LASTEXITCODE -ne 0) { throw "nllb-cli.exe backend smoke test failed." }
           @"
           nllb-cli.exe - Windows x64 CPU build
           Built from ismaelmartinsvieiradias27-sys/nllb.cpp.
-          No CUDA required. Download a compatible NLLB GGUF model separately.
+          CPU backend. The required DLL files are included.
+          Download a compatible NLLB GGUF model separately.
           "@ | Set-Content package/LEIA-ME.txt
+          if (Test-Path LICENSE) { Copy-Item LICENSE package/ }
 
-      - name: Upload executable
+      - name: Upload executable package
         uses: actions/upload-artifact@v4
         with:
           name: nllb-cli-windows-x64

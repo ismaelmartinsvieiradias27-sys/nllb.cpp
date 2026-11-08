@@ -31,22 +31,38 @@ jobs:
       - name: Compile nllb-cli
         run: cmake --build build --config Release --parallel 2 --target nllb-cli
 
-      - name: Package and test executable
+      - name: Package runtime DLLs and test executable
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Path build -Filter nllb-cli.exe -Recurse | Select-Object -First 1
           if (-not $exe) { throw "nllb-cli.exe was not produced." }
+
           New-Item -ItemType Directory -Force -Path package | Out-Null
           Copy-Item $exe.FullName package/
-          Get-ChildItem -Path $exe.DirectoryName -Filter "*.dll" | Copy-Item -Destination package/
+
+          $dlls = Get-ChildItem -Path build -Filter "*.dll" -Recurse
+          foreach ($dll in $dlls) {
+            Copy-Item $dll.FullName -Destination package/ -Force
+          }
+
+          Write-Host "Files included in package:"
+          Get-ChildItem package | Select-Object Name, Length | Format-Table -AutoSize
+
+          $required = Join-Path (Get-Location) "package/ggml.dll"
+          if (-not (Test-Path $required)) {
+            throw "Required runtime library ggml.dll was not found in the build output. Available DLLs: $($dlls.Name -join ', ')"
+          }
+
           & (Join-Path (Get-Location) "package/nllb-cli.exe") --list-backends
           if ($LASTEXITCODE -ne 0) { throw "nllb-cli.exe backend smoke test failed." }
+
           @"
           nllb-cli.exe - Windows x64 CPU build
           Built from ismaelmartinsvieiradias27-sys/nllb.cpp.
-          CPU backend. The required DLL files are included.
+          CPU backend. Runtime DLL files are included.
           Download a compatible NLLB GGUF model separately.
           "@ | Set-Content package/LEIA-ME.txt
+
           if (Test-Path LICENSE) { Copy-Item LICENSE package/ }
 
       - name: Upload executable package
